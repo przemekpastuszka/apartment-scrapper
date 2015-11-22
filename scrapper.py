@@ -1,4 +1,5 @@
 # coding=UTF-8
+import traceback
 
 import requests
 import re
@@ -64,15 +65,12 @@ def make_link(link):
     return urlparse.urljoin("https://rynekpierwotny.pl/", link['href'])
 
 
-def parse_search_page(page, region=11158, rooms_0=3, rooms_1=3, price_m2_1=7000):
+def parse_search_page(page, region=11158):
     url = ("https://rynekpierwotny.pl/oferty/?type=&region={region}"
-           "&distance=0&price_0=&price_1=&area_0=&area_1=&rooms_0={rooms_0}&rooms_1={rooms_1}"
-           "&construction_end_date=&price_m2_0=&price_m2_1={price_m2_1}&floor_0=&floor_1="
+           "&distance=0&price_0=&price_1=&area_0=&area_1=&rooms_0=&rooms_1="
+           "&construction_end_date=&price_m2_0=&price_m2_1=&floor_0=&floor_1="
            "&offer_size=&keywords=&is_luxury=&page={page}&is_mdm=&is_holiday=&lat=&lng=&sort=").format(
         region=region,
-        rooms_0=rooms_0,
-        rooms_1=rooms_1,
-        price_m2_1=price_m2_1,
         page=page
     )
     soup = to_soup(url)
@@ -82,14 +80,14 @@ def parse_search_page(page, region=11158, rooms_0=3, rooms_1=3, price_m2_1=7000)
     return links
 
 
-def search_all_investments(region=11158, rooms_0=3, rooms_1=3, price_m2_1=7000):
+def search_all_investments(region=11158):
     i = 1
     results = []
-    partial_results = parse_search_page(i, region, rooms_0, rooms_1, price_m2_1)
+    partial_results = parse_search_page(i, region)
     while partial_results:
         results += partial_results
         i += 1
-        partial_results = parse_search_page(i, region, rooms_0, rooms_1, price_m2_1)
+        partial_results = parse_search_page(i, region)
     return results
 
 
@@ -145,8 +143,8 @@ def parse_details_html(url):
             u"Powierzchnia": as_float(retrieve_meta(soup, 'dimension-area')),
             u"Pokoje": as_int(retrieve_meta(soup, 'dimension-rooms')),
             u'Cena parkingu': parse_parking_places(basic_data['Miejsca postojowe:'][1]),
-            u'Piętro:': as_int(retrieve_meta(soup, 'dimension-floor')),
-            u"Koszty dodatkowe": sum([as_int(value) for value in extended_data.values()]),
+            u'Piętro': as_int(retrieve_meta(soup, 'dimension-floor')),
+            u"Koszty dodatkowe": sum([as_int(value) for value in extended_data.values()]) or None,
             u"Długosć geograficzna": as_float(retrieve_meta(soup, 'longitude', 'itemprop')),
             u"Szerokość geograficzna": as_float(retrieve_meta(soup, 'latitude', 'itemprop')),
             u"Termin": as_date(basic_data['Realizacja inwestycji:'][-16:-6])
@@ -154,7 +152,7 @@ def parse_details_html(url):
     except requests.exceptions.ConnectionError:
         return url
     except Exception, e:
-        raise Exception("Failed to fetch %s" % url, e)
+        raise Exception("Failed to fetch %s; %s" % (url, traceback.format_exc()), e)
 
 
 def flatten_list(l):
@@ -182,4 +180,4 @@ def scrap():
 
 scrap()
 # print parse_details_html(
-#     "https://rynekpierwotny.pl/oferty/emmerson-lumico-sp-z-oo/strycharska-10-krakow-podgorze/384257")
+#     "https://rynekpierwotny.pl/oferty/tetnowski-development/pradnicka-65-krakow-krowodrza/388463/")
