@@ -6,6 +6,7 @@ from datetime import date as dt
 from bs4 import BeautifulSoup
 import urlparse
 from dateutil.relativedelta import relativedelta
+import pandas
 
 
 def stringify_child(child):
@@ -24,11 +25,15 @@ def table_into_json(table):
 
 
 def as_float(text):
-    return float(re.sub("[^0-9\,]", "", text).replace(",", ".") or "0")
+    if text:
+        return float(re.sub("[^0-9\,\.]", "", text).replace(",", "."))
+    return None
 
 
 def as_int(text):
-    return int(re.sub("[^0-9]", "", text) or "0")
+    if text:
+        return int(re.sub("[^0-9]", "", text))
+    return None
 
 
 def as_date(text):
@@ -97,6 +102,30 @@ def as_dict(table):
     return result
 
 
+def retrieve_meta(soup, id, tag_name='id'):
+    metas = soup.find_all('meta', {tag_name: id})
+    if metas:
+        return metas[0]['content']
+    return None
+
+
+def parse_parking_place(str):
+    str_no_whitespace = re.sub("\s|\.", "", str)
+    ranges = [as_float(x) for x in re.findall("[0-9]+", str_no_whitespace)]
+    ranges = [x for x in ranges if x >= 1000]
+    if ranges:
+        return min(ranges)
+    return None
+
+
+def parse_parking_places(l):
+    parsed_places = [parse_parking_place(x) for x in l] if isinstance(l, list) else [parse_parking_place(l)]
+    parsed_places = [place for place in parsed_places if place]
+    if parsed_places:
+        return min(parsed_places)
+    return None
+
+
 def parse_details_html(url):
     try:
         soup = to_soup(url)
@@ -109,14 +138,17 @@ def parse_details_html(url):
 
         return {
             u"Link": url,
-            u"Ulica": soup.find_all('meta', {'itemprop': 'streetAddress'})[0]['content'].lower().strip("ul.").strip(),
-            u"Cena mieszkania": as_int(basic_data['Cena:'][0]) or None,
-            u"Cena za metr": as_float(basic_data['Cena:'][1][0]) or None,
-            u"Powierzchnia": as_float(basic_data['Powierzchnia:'][0]),
-            u"Pokoje": as_int(basic_data['Pokoje:']),
-            u'Cena parkingu': as_int(unicode(basic_data['Miejsca postojowe:'][1])) or None,
-            u'Piętro:': as_int(basic_data[u'Piętro:']) if u'Piętro' in basic_data else None,
-            u"Koszty dodatkowe": sum([as_int(value) for value in extended_data.values()]) or None,
+            u"Region": retrieve_meta(soup, 'dimension-region'),
+            u"Ulica": retrieve_meta(soup, "streetAddress", "itemprop").lower().strip("ul.").strip(),
+            u"Cena mieszkania": as_int(retrieve_meta(soup, 'dimension-price')),
+            u"Cena za metr": as_int(retrieve_meta(soup, 'dimension-price-m2')),
+            u"Powierzchnia": as_float(retrieve_meta(soup, 'dimension-area')),
+            u"Pokoje": as_int(retrieve_meta(soup, 'dimension-rooms')),
+            u'Cena parkingu': parse_parking_places(basic_data['Miejsca postojowe:'][1]),
+            u'Piętro:': as_int(retrieve_meta(soup, 'dimension-floor')),
+            u"Koszty dodatkowe": sum([as_int(value) for value in extended_data.values()]),
+            u"Długosć geograficzna": as_float(retrieve_meta(soup, 'longitude', 'itemprop')),
+            u"Szerokość geograficzna": as_float(retrieve_meta(soup, 'latitude', 'itemprop')),
             u"Termin": as_date(basic_data['Realizacja inwestycji:'][-16:-6])
         }
     except requests.exceptions.ConnectionError:
@@ -144,13 +176,10 @@ def scrap():
         apartments_details += [result for result in results if isinstance(result, dict)]
         apartments = [result for result in results if isinstance(result, unicode) or isinstance(result, str)]
 
-    def date_handler(obj):
-        return obj.isoformat() if hasattr(obj, 'isoformat') else obj
-
-    import json
-    with open("/home/ppastuszka/Dokumenty/apartmentdata", "wb") as f:
-        json.dump(apartments_details, f, default=date_handler)
+    df = pandas.DataFrame(apartments_details)
+    df.to_pickle("/home/ppastuszka/Dokumenty/apartmentdata.pkl")
 
 
 scrap()
-# print parse_details_html("https://rynekpierwotny.pl/oferty/grupa-buma/podgorki-tynieckie-krakow-debniki/385863/")
+# print parse_details_html(
+#     "https://rynekpierwotny.pl/oferty/emmerson-lumico-sp-z-oo/strycharska-10-krakow-podgorze/384257")
