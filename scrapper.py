@@ -131,7 +131,7 @@ def flatten_list(l):
 
 def scrap():
     from multiprocessing import Pool
-    pool = Pool(40)
+    pool = Pool(30)
 
     investments = search_all_investments()
     print "There are %s investments found" % len(investments)
