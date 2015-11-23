@@ -53,7 +53,7 @@ cleaned_data[u'Wkład 20%'] = 0.2 * cleaned_data['Cena mieszkania + parking MDM'
 
 cleaned_data[u'latlong'] = zip(cleaned_data[u'Szerokość geograficzna'], cleaned_data[u'Długosć geograficzna'])
 
-gps_points = cleaned_data['latlong'].unique()
+gps_points = list(cleaned_data['latlong'].unique())
 
 gmaps = googlemaps.Client(key=client_key)
 
@@ -77,7 +77,6 @@ def to_minutes(seconds):
 
 
 def get_duration(result):
-    print result
     leg = result[0]['legs'][0]
     if 'duration_in_traffic' in leg:
         return to_minutes(leg['duration_in_traffic']['value'])
@@ -85,33 +84,41 @@ def get_duration(result):
 
 
 def get_data_for_gps_data(gps_data):
-    high_traffic = gmaps.directions(gps_data, target_location, mode="driving",
-                                    departure_time=high_traffic_date)
-    low_traffic = gmaps.directions(gps_data, target_location, mode="driving",
-                                   departure_time=low_traffic_date)
-    weekday = gmaps.directions(gps_data, target_location, mode="driving",
-                               departure_time=weekend_midday_date)
-    cycling = gmaps.directions(gps_data, target_location, mode="bicycling",
-                               departure_time=high_traffic_date)
+    try:
+        high_traffic = gmaps.directions(gps_data, target_location, mode="driving",
+                                        departure_time=high_traffic_date)
+        low_traffic = gmaps.directions(gps_data, target_location, mode="driving",
+                                       departure_time=low_traffic_date)
+        weekday = gmaps.directions(gps_data, target_location, mode="driving",
+                                   departure_time=weekend_midday_date)
+        cycling = gmaps.directions(gps_data, target_location, mode="bicycling",
+                                   departure_time=high_traffic_date)
 
-    return {
-        'latlong': gps_data,
-        'Czas dojazdu samochodem w korkach': get_duration(high_traffic),
-        u'Czas dojazdu samochodem bez korków': get_duration(low_traffic),
-        u'Czas dojazdu samochodem w weekend': get_duration(weekday),
-        u'Czas dojazdu rowerem': get_duration(cycling)
-    }
+        return {
+            'latlong': gps_data,
+            'Czas dojazdu samochodem w korkach': get_duration(high_traffic),
+            u'Czas dojazdu samochodem bez korków': get_duration(low_traffic),
+            u'Czas dojazdu samochodem w weekend': get_duration(weekday),
+            u'Czas dojazdu rowerem': get_duration(cycling)
+        }
+    except googlemaps.exceptions.TransportError:
+        return gps_data
 
 
-# pool = Pool(7)
-#
-# streets_data = pool.map(get_data_for_gps_data, gps_points)
-# streets_data = pandas.DataFrame(streets_data)
-# cleaned_data = cleaned_data.merge(streets_data, on='latlong')
-#
-# with open("/home/ppastuszka/Dokumenty/cleanedapartmentdata.csv", "wb") as f:
-#     cleaned_data.to_csv(f, encoding='utf-8')
-#
-# cleaned_data.to_pickle("/home/ppastuszka/Dokumenty/cleanedapartmentdata.pkl")
+pool = Pool(7)
 
-get_data_for_gps_data((19.983934129629951, 50.094918198073252))
+travel_data = []
+while gps_points:
+    print "Fetching %s gps points" % len(gps_points)
+    results = pool.map(get_data_for_gps_data, gps_points)
+    travel_data += [result for result in results if isinstance(result, dict)]
+    gps_points = [result for result in results if isinstance(result, tuple)]
+
+travel_data = pandas.DataFrame(travel_data)
+cleaned_data = cleaned_data.merge(travel_data, on='latlong')
+cleaned_data = cleaned_data.drop('latlong', 1)
+
+with open("/home/ppastuszka/Dokumenty/cleanedapartmentdata.csv", "wb") as f:
+    cleaned_data.to_csv(f, encoding='utf-8')
+
+cleaned_data.to_pickle("/home/ppastuszka/Dokumenty/cleanedapartmentdata.pkl")
