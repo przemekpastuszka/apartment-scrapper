@@ -9,6 +9,8 @@ import urlparse
 from dateutil.relativedelta import relativedelta
 import pandas
 
+from utils import to_soup, as_int
+
 
 def stringify_child(child):
     if child.string:
@@ -31,22 +33,11 @@ def as_float(text):
     return None
 
 
-def as_int(text):
-    if text:
-        return int(re.sub("[^0-9]", "", text))
-    return None
-
 
 def as_date(text):
     quarter = int(text[0])
     year = int(text[-4:])
     return dt(year, quarter * 3, 1) + relativedelta(months=1)
-
-
-def to_soup(url):
-    page = requests.get(url)
-    return BeautifulSoup(page.content, "lxml")
-
 
 def parse_invest_html(url):
     soup = to_soup(url)

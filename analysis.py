@@ -1,13 +1,15 @@
 # coding: utf-8
-import pandas
+import math
+import os
 from datetime import date
 from dateutil.relativedelta import relativedelta
-import numpy as np
-import os
-import datetime
-import googlemaps
 from multiprocessing import Pool
-import math
+
+import googlemaps
+import numpy as np
+import pandas
+
+from utils import high_traffic_date, low_traffic_date, weekend_midday_date
 
 mdm_limit = 5247
 mdm_discount = 0.1
@@ -56,20 +58,6 @@ cleaned_data[u'latlong'] = zip(cleaned_data[u'Szerokość geograficzna'], cleane
 gps_points = list(cleaned_data['latlong'].unique())
 
 gmaps = googlemaps.Client(key=client_key)
-
-
-def next_weekday(d, weekday):
-    days_ahead = weekday - d.weekday()
-    if days_ahead <= 0:
-        days_ahead += 7
-    return d + datetime.timedelta(days_ahead)
-
-
-MONDAY = 0
-SATURDAY = 5
-high_traffic_date = next_weekday(datetime.datetime.now(), MONDAY).replace(hour=8, minute=5)
-low_traffic_date = next_weekday(datetime.datetime.now(), MONDAY).replace(hour=20, minute=0)
-weekend_midday_date = next_weekday(datetime.datetime.now(), SATURDAY).replace(hour=13, minute=0)
 
 
 def to_minutes(seconds):
