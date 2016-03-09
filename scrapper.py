@@ -1,13 +1,12 @@
 # coding=UTF-8
-import traceback
-
-import requests
 import re
-from datetime import date as dt
-from bs4 import BeautifulSoup
+import traceback
 import urlparse
-from dateutil.relativedelta import relativedelta
+from datetime import date as dt
+
 import pandas
+import requests
+from dateutil.relativedelta import relativedelta
 
 from utils import to_soup, as_int
 
@@ -15,15 +14,23 @@ from utils import to_soup, as_int
 def stringify_child(child):
     if child.string:
         return unicode(child.string.strip())
-    if hasattr(child, 'children') and child.children:
-        return [stringify_child(x) for x in child.children]
+    if hasattr(child, 'children'):
+        children = list(child.children)
+        if len(children) > 1:
+            return [stringify_child(x) for x in children]
+        if len(children) == 1:
+            return stringify_child(children[0])
 
 
 def table_into_json(table):
     result = []
     trs = table.find_all('tr')
     for tr in trs:
-        result.append([stringify_child(td) for td in tr.find_all('td')])
+        tds = tr.find_all('td')
+        if len(tds) > 1:
+            result.append([stringify_child(td) for td in tds])
+        if len(tds) == 1:
+            result.append(stringify_child(tds[0]))
     return result
 
 
@@ -33,23 +40,28 @@ def as_float(text):
     return None
 
 
-
 def as_date(text):
     quarter = int(text[0])
     year = int(text[-4:])
     return dt(year, quarter * 3, 1) + relativedelta(months=1)
 
+
 def parse_invest_html(url):
-    soup = to_soup(url)
-    body = soup.find_all('div', {"data-config-table-container": "propertyListFull"})[0].tbody
-    links = []
-    for row in body.find_all('tr'):
-        potential_links = row.find_all('a', href=True)
-        if len(potential_links) == 2:
-            links.append(make_link(potential_links[1]))
-        else:
-            links.append(make_link(potential_links[0]))
-    return links
+    try:
+        soup = to_soup(url)
+        body = soup.find_all('div', {"data-config-table-container": "propertyListFull"})
+
+        links = []
+        if body:
+            for row in body[0].tbody.find_all('tr'):
+                potential_links = row.find_all('a', href=True)
+                if len(potential_links) == 2:
+                    links.append(make_link(potential_links[1]))
+                else:
+                    links.append(make_link(potential_links[0]))
+        return links
+    except Exception, e:
+        raise Exception("Failed to fetch %s; %s" % (url, traceback.format_exc()), e)
 
 
 def make_link(link):
@@ -61,8 +73,8 @@ def parse_search_page(page, region=11158):
            "&distance=0&price_0=&price_1=&area_0=&area_1=&rooms_0=&rooms_1="
            "&construction_end_date=&price_m2_0=&price_m2_1=&floor_0=&floor_1="
            "&offer_size=&keywords=&is_luxury=&page={page}&is_mdm=&is_holiday=&lat=&lng=&sort=").format(
-        region=region,
-        page=page
+            region=region,
+            page=page
     )
     soup = to_soup(url)
     links = []
@@ -84,10 +96,12 @@ def search_all_investments(region=11158):
 
 def as_dict(table):
     result = {}
-    for key, value in table:
-        if isinstance(key, list):
-            key = key[1]
-        result[key] = value
+    for x in table:
+        if len(x) == 2:
+            key, value = x
+            if isinstance(key, list):
+                key = key[1]
+            result[key] = value
     return result
 
 
@@ -108,18 +122,26 @@ def parse_parking_place(str):
 
 
 def parse_parking_places(l):
-    parsed_places = [parse_parking_place(x) for x in l] if isinstance(l, list) else [parse_parking_place(l)]
+    parsed_places = [parse_parking_place(x) for x in l] if isinstance(l, list) else [
+        parse_parking_place(l)]
     parsed_places = [place for place in parsed_places if place]
     if parsed_places:
         return min(parsed_places)
     return None
 
 
+def one_of(d, keys):
+    for key in keys:
+        if key in d:
+            return d[key]
+
+
 def parse_details_html(url):
     try:
         soup = to_soup(url)
 
-        basic_data = as_dict(table_into_json(soup.find_all('section', {'id': 'szczegoly-oferty'})[0].table))
+        basic_data = as_dict(
+                table_into_json(soup.find_all('section', {'id': 'szczegoly-oferty'})[0].table))
         extended_data_sections = soup.find_all('section', {'id': 'dodatkowe-oplaty'})
         extended_data = {}
         if extended_data_sections:
@@ -138,7 +160,9 @@ def parse_details_html(url):
             u"Koszty dodatkowe": sum([as_int(value) for value in extended_data.values()]) or None,
             u"Długosć geograficzna": as_float(retrieve_meta(soup, 'longitude', 'itemprop')),
             u"Szerokość geograficzna": as_float(retrieve_meta(soup, 'latitude', 'itemprop')),
-            u"Termin": as_date(basic_data['Realizacja inwestycji:'][-16:-6])
+            u"Termin": as_date(
+                    one_of(basic_data, ['Realizacja inwestycji:', u'Realizacja nieruchomości:'])[
+                    -16:-6])
         }
     except requests.exceptions.ConnectionError:
         return url
@@ -163,7 +187,8 @@ def scrap():
         print "Fetching %s apartaments" % len(apartments)
         results = pool.map(parse_details_html, apartments)
         apartments_details += [result for result in results if isinstance(result, dict)]
-        apartments = [result for result in results if isinstance(result, unicode) or isinstance(result, str)]
+        apartments = [result for result in results if
+                      isinstance(result, unicode) or isinstance(result, str)]
 
     df = pandas.DataFrame(apartments_details)
     df.to_pickle("/home/ppastuszka/Dokumenty/apartmentdata.pkl")
@@ -171,4 +196,4 @@ def scrap():
 
 scrap()
 # print parse_details_html(
-#     "https://rynekpierwotny.pl/oferty/tetnowski-development/pradnicka-65-krakow-krowodrza/388463/")
+#     "https://rynekpierwotny.pl/oferty/cordia-member-of-futureal/cordia-cystersow-garden-krakow-grzegorzki/347828/")
