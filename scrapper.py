@@ -100,7 +100,7 @@ def as_dict(table):
         if len(x) == 2:
             key, value = x
             if isinstance(key, list):
-                key = key[1]
+                key = key[0]
             result[key] = value
     return result
 
@@ -196,4 +196,4 @@ def scrap():
 
 scrap()
 # print parse_details_html(
-#     "https://rynekpierwotny.pl/oferty/cordia-member-of-futureal/cordia-cystersow-garden-krakow-grzegorzki/347828/")
+#     "https://rynekpierwotny.pl/oferty/dasta-invest-sp-z-oo/park-lotnikow-krakow-grzegorzki/409913/;")
